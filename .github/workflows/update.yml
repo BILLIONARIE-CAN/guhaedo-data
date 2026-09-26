@@ -1,0 +1,44 @@
+name: update-data
+
+on:
+  schedule:
+    - cron: '0 18 * * *'   # 매일 새벽 3시 (KST)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-data
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: collect
+        run: node build.mjs
+        env:
+          SERVICE_KEY: ${{ secrets.SERVICE_KEY }}
+          BUDGET: ${{ vars.BUDGET || 9000 }}
+
+      - name: presale collect
+        run: node presale.mjs || echo "presale fail - retry next run"
+        env:
+          SERVICE_KEY: ${{ secrets.SERVICE_KEY }}
+
+      - name: snapshot push
+        run: |
+          git config user.name "data-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git checkout --orphan snap
+          git add -A
+          git commit -m "data $(date -u +%Y-%m-%d)"
+          git push -f origin snap:main
